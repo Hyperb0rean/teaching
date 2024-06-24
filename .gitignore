@@ -1,2 +1,7 @@
 .vscode/*
 .vscode/settings.json
+*.aux
+*.log
+*.out
+*.gz
+*.toc

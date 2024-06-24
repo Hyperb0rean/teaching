@@ -1,0 +1,62 @@
+\documentclass{article}
+\usepackage{graphicx} % Required for inserting images
+\usepackage{cmap}  % should be before fontenc
+\usepackage[T2A]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[russian]{babel}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{unicode-math}
+\usepackage[pdftex,colorlinks=true,linkcolor=blue,urlcolor=red,unicode=true,hyperfootnotes=false,bookmarksnumbered]{hyperref}
+\usepackage[nameinlink]{cleveref}
+\usepackage{indentfirst}
+
+\newcommand{\E}{\ensuremath{\mathsf{E}}}  
+\newcommand{\D}{\ensuremath{\mathsf{D}}}  
+\newcommand{\Prb}{\ensuremath{\mathsf{P}}}  
+\newcommand{\eps}{\varepsilon}  
+\renewcommand{\phi}{\varphi} 
+\renewcommand{\le}{\leqslant}  
+\renewcommand{\leq}{\leqslant}  
+\renewcommand{\ge}{\geqslant}  
+\renewcommand{\geq}{\geqslant}  
+\renewcommand\qedsymbol{Q.E.D.}
+
+\newtheorem{theorem}{Теорема} 
+\newtheorem{lemma}{Лемма}
+\newtheorem{consequence}{Следствие} 
+
+\theoremstyle{definition}
+\newtheorem{definition}{Определение}[section]
+\newcommand{\question}{\textbf{Вопрос аудитории: }}  
+
+\theoremstyle{remark}
+\newtheorem*{remark}{Примечание}
+
+\Crefformat{lemma}{#2Lemma#3}   
+\crefformat{lemma}{#2lemma#3}
+
+\pagestyle{myheadings}
+\markright{Probablity Theory. SMS 2024. Greg Sosnovtsev\hfill}  
+
+\begin{document}
+
+\tableofcontents
+
+
+\section{День 0*. Прелюдия, повторяем комбинаторику}
+
+\section{День 1. Случайные события и классическое определение вероятности}
+
+\section{День 2. Условная вероятность}
+
+\section{День 3. Вероятностные характеристики}
+
+\section{День 4. Геометрическая вероятность}
+
+\section{День 5. Эпилог, что дальше?}
+
+\section{День 6. Зачет}
+
+\section*{Post Scriptum}
+
+\end{document}
