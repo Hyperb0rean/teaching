@@ -45,13 +45,121 @@
 
 \section{День 0*. Прелюдия, повторяем комбинаторику}
 
-\section{День 1. Случайные события и классическое определение вероятности}
+\section{День 1. Случайные события и элементарное определение вероятности}
 
-\section{День 2. Условная вероятность}
+Назовем \textit{множеством элементарных исходов} $\varOmega = \{\omega_1\omega_2,...\omega_n \}$ такое конечное множеством, 
+что $\omega_i$ и $\omega_j$ несовместны
 
-\section{День 3. Вероятностные характеристики}
+Тогда \textit{Событие} - это любое множество элементарных исходов. 
 
-\section{День 4. Геометрическая вероятность}
+Пусть $A \subset \varOmega$ - событие, тогда
+\begin{itemize}
+    \item $ A \cup B = \{\omega \in \varOmega : \omega \in A$ или $ \omega \in B\} $ 
+    \item  $ A \cap B = \{\omega \in \varOmega : \omega \in A$ и $ \omega \in B\} $ 
+    \item $ \complement{A} = \{ \omega \in \varOmega : \omega \notin A \} $
+\end{itemize}
+
+\begin{remark}
+
+Рассмотрим эксперимент бросок кубика d6 
+
+$\varOmega = \{1,2,3,4,5,6\}$
+
+Событие, что выпала грань с четным числом - \{2,4,6\}
+Событие, что выпала грань с числом меньше 3 - \{1,2\}
+
+\end{remark}
+
+Определим некоторую функцию $P: \varOmega \to [0,1]$, которую назовем 
+\textit{распределением вероятностей}
+Такую, что 
+$$
+\sum_{\omega \in \varOmega} P(\omega)  = 1
+$$
+
+Вероятность P(A) \textit{события} A тогда определим как 
+$$
+P(A) = \sum_{\omega \in A} P(\omega)  
+$$
+
+Пару $(\varOmega, P)$ будем называть \textit{Дискретным вероятностным пространством}
+
+
+
+Примитивные свойства:
+
+\begin{enumerate}
+ \item $ P(\varnothing) = 0 $
+ \item $ P(\varOmega) = 1 $
+ \item $P(\complement{A}) = 1 - P(A)$
+ \item Если A и B \textit{не совместны} то есть $A \cap B = \varnothing$ то $ P(A \cup B) = P(A) + P(B) $
+ \item $ P(A \cup B) = P(A) + P(B) - P(A \cap B) $
+\end{enumerate}
+
+\question{Верно ли что нулевая вероятность может быть только у пустого события ($\varnothing$) ?}
+
+\begin{theorem} [Формула включений-исключений]
+    $$ 
+    P(\bigcup\limits_{i=1}^{m} A_i) = \sum_{1}^{m} P(A_i) - \sum_{i<j} P(A_i \cap A_j) + \sum_{i<j<k} P(A_i \cap A_j \cap A_k) ... + (-1)^{m-1} P(\bigcap\limits_{i=1}^{m} A_i)
+    $$
+\end{theorem}
+\begin{proof}
+    Будем вести доказательство индукцией по m
+
+    База при m = 1 очевидна, при m = 2 сошлемся на пятый пункт, который также очевиден.
+
+    Переход от m к m+1:
+
+    Пусть $B = \bigcup\limits_{i=1}^{m} A_i$
+
+    $$
+    P(\bigcup\limits_{i=1}^{m+1} A_i) = P(B \cup A_{m+1}) = P(B) + P(A_{m+1}) - P(B \cap A_{m+1})
+    $$
+    Пусть $B_i = A_i \cap A_{m+1} \Rightarrow P(B \cap A_{m+1}) = P(\bigcup\limits_{i=1}^{m} B_i)$
+    $$
+    \Rightarrow P(B) + P(A_{m+1}) - P(B \cap A_{m+1}) = P(B) + P(A_{m+1}) - P(\bigcup\limits_{i=1}^{m} B_i) 
+    $$
+
+    $$
+    = (\sum_{1}^{m} P(A_i)  - \sum_{i<j \le m} P(A_i \cap A_j)  + \sum_{i<j<k \le m} P(A_i \cap A_j \cap A_k) - ... ) + P(A_{m+1}) 
+    $$
+    $$
+    - (\sum_{1}^{m} P(A_i \cap A_{m+1})  - \sum_{i<j \le m} P(A_i \cap A_j  \cap A_{m+1})  + ... )
+    $$
+
+    Остается сгруппировать и понять, что это именно то, что нас интересует.
+\end{proof}
+
+Рассмотрим важный частный случай, когда все элементарные исходы равновозможны, 
+то есть $P(w_i) = \frac{1}{|\varOmega|}$
+
+Тогда вероятность события A равна
+$$
+P(A) = \frac{|A|}{|\varOmega|}
+$$
+
+
+\section{День 2. Условная вероятность и независимые события}
+
+Пусть $P(B) > 0$ 
+
+Тогда Вероятность события A \textit{при условии} что наступило событие B определим как
+$$
+P(A | B) = \frac{P(A \cap B)}{P(B)}
+$$
+
+Свойства 
+\begin{enumerate}
+    \item $P(A | A) = 1$ и если $B \subset A$ то $P(A | B) = 1$
+    \item $P(\varnothing | B) = 0$
+    \item Если $A_1$ и $A_2$ не совместны, то $P(A_1 \cup A_2 | B) = P(A_1 | B) + P(A_2 | B)$
+    \item $P(\complement{A} | B) + P(A | B) = 1$
+    \question{Будет ли равняться 1 $P(A | B) + P(A | \complement{B})$}
+\end{enumerate}
+
+\section{День 3. Случайные величины и вероятностные характеристики}
+
+\section{День 4. Геометрическая вероятность и Метод Монте-Карло}
 
 \section{День 5. Эпилог, что дальше?}
 
