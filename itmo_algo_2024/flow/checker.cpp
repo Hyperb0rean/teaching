@@ -1,6 +1,7 @@
 #include "../testlib.h"
-
 #include <algorithm>
+#include <cstddef>
+#include <cstdlib>
 #include <iostream>
 #include <istream>
 #include <iterator>
@@ -9,7 +10,6 @@
 #include <ostream>
 #include <queue>
 #include <ranges>
-#include <set>
 #include <tuple>
 #include <unordered_set>
 #include <utility>
@@ -19,16 +19,10 @@ namespace lib {
 
 namespace algo {
 
-struct BasicStop {
-    auto operator()(int left, int right) -> bool {
-        return right - left > 1;
-    }
-};
-
-template <class Predicate, class Stop = BasicStop>
-auto BinarySearch(int left, int right, Predicate predicate, Stop stop = Stop{}) -> int {
-    while (stop(left, right)) {
-        auto mid = std::midpoint(left, right);
+template <class Predicate>
+auto BinarySearch(int left, int right, Predicate predicate = Predicate{}) -> int {
+    while (right - left > 1) {
+        auto &&mid = std::midpoint(left, right);
         if (predicate(mid)) {
             right = mid;
         } else {
@@ -41,8 +35,8 @@ auto BinarySearch(int left, int right, Predicate predicate, Stop stop = Stop{}) 
 template <class Iterator, class Predicate>
 auto BinarySearch(Iterator left, Iterator right, Predicate predicate = Predicate{})
     -> Iterator requires std::random_access_iterator<Iterator> {
-    int index = BinarySearch(-1, std::distance(left, right),
-                             [predicate, &left](int mid) { return predicate(*(left + mid)); });
+    auto &&index = BinarySearch(-1, std::distance(left, right),
+                                [predicate, &left](int mid) { return predicate(*(left + mid)); });
     return left + index;
 }
 
@@ -50,7 +44,7 @@ auto BinarySearch(Iterator left, Iterator right, Predicate predicate = Predicate
 
 namespace traverse {
 template <class Vertex, class Graph, class Visitor>
-auto BreadthFirstSearch(Vertex origin_vertex, Graph& graph, Visitor visitor) -> void {
+auto BreadthFirstSearch(Vertex origin_vertex, Graph *graph, Visitor visitor) -> void {
     std::unordered_set<Vertex> visited;
     std::queue<Vertex> current;
     visited.insert(origin_vertex);
@@ -58,13 +52,14 @@ auto BreadthFirstSearch(Vertex origin_vertex, Graph& graph, Visitor visitor) -> 
     visitor.DiscoverVertex(origin_vertex);
 
     while (!current.empty() && visitor.ShouldRun()) {
-        auto vertex = current.front();
+        auto &&vertex = current.front();
         visitor.ExamineVertex(vertex);
         current.pop();
 
-        for (auto& edge : graph.GetOutgoingEdges(vertex)) {
-            visitor.ExamineEdge(edge);
-            auto target = graph.GetTarget(edge);
+        for (auto &&edge : graph->GetOutgoingEdges(vertex)) {
+            visitor.ExamineEdgeConst(edge);
+            visitor.ExamineEdge(&edge);
+            auto &&target = graph->GetTarget(edge);
             if (!visited.contains(target)) {
                 visited.insert(target);
                 current.push(target);
@@ -79,7 +74,9 @@ class BfsVisitor {
 public:
     virtual auto DiscoverVertex(Vertex /*vertex*/) -> void {
     }
-    virtual auto ExamineEdge(Edge& /*edge*/) -> void {
+    virtual auto ExamineEdgeConst(const Edge & /*edge*/) -> void {
+    }
+    virtual auto ExamineEdge(Edge * /*edge*/) -> void {
     }
     virtual auto ExamineVertex(Vertex /*vertex*/) -> void {
     }
@@ -91,269 +88,310 @@ public:
 }  // namespace traverse
 
 namespace graph {
-
-template <class Weight>
-class FlowNetworkBuilder;
-
-template <class Weight>
-struct Edge {
-    int from;
-    int to;
-    Weight weight;
-    Edge* back_edge;
-};
-
-template <class Weight>
-class FlowNetwork {
-    int source_;
-    int sink_;
-
-    std::vector<int> starts_;
-    std::vector<Edge<Weight>> edges_;
-
-    // Edge array must be sorted
-    auto FindEdge(int from, int to) -> std::vector<Edge<Weight>>::iterator {
-        auto edges = GetOutgoingEdges(from);
-        auto iter = algo::BinarySearch(edges.begin(), edges.end(),
-                                       [&to](auto mid) { return mid.to >= to; });
-        return iter->to == to ? iter : edges_.end();
-    }
-
-    FlowNetwork(int source, int sink, int nodes_count, int edges_count)
-        : source_(source), sink_(sink), starts_(nodes_count), edges_(edges_count) {
-    }
-
+template <class Vertex, class Edge>
+class Graph {
 public:
+    using Vertex_t = Vertex;
+    using Edge_t = Edge;
+
     auto EdgesCount() const noexcept -> int {
         return static_cast<int>(edges_.size());
     }
 
-    auto GetDegree(int node) const noexcept -> int {
-        return (node + 1 < NodesCount() ? starts_[node + 1] : EdgesCount()) - starts_[node];
+    auto GetDegree(Vertex node) const noexcept -> int {
+        return (NodesCount() - node - 1 > 0 ? starts_[node + 1] : EdgesCount()) - starts_[node];
     }
 
     auto NodesCount() const noexcept -> int {
         return static_cast<int>(starts_.size());
     }
 
-    auto GetSource() const noexcept -> int {
-        return source_;
-    }
-
-    auto GetSink() const noexcept -> int {
-        return sink_;
-    }
-
-    auto GetTarget(const Edge<Weight>& edge) const noexcept -> int {
+public:
+    auto GetTarget(const Edge &edge) const noexcept -> Vertex {
         return edge.to;
     }
 
-    auto GetOutgoingEdges(int node) {
+    auto GetOutgoingEdges(Vertex node) {
         return std::ranges::ref_view(edges_) | std::views::drop(starts_[node]) |
                std::views::take(GetDegree(node));
     }
 
-    auto GetOutgoingEdges(int node) const {
+    auto GetOutgoingEdges(Vertex node) const {
         return std::ranges::ref_view(edges_) | std::views::drop(starts_[node]) |
                std::views::take(GetDegree(node));
     }
 
-    friend FlowNetworkBuilder<Weight>;
+protected:
+    explicit Graph(int nodes_count, int edges_count) : starts_(nodes_count), edges_(edges_count) {
+    }
+
+    std::vector<Vertex> starts_;
+    std::vector<Edge> edges_;
+
+    // Edge array must be sorted
+    auto FindEdge(Vertex from, Vertex to) -> std::vector<Edge>::iterator {
+        auto &&edges = GetOutgoingEdges(from);
+        auto iter = algo::BinarySearch(edges.begin(), edges.end(),
+                                       [&to](auto mid) { return mid.to >= to; });
+        return iter->to == to ? iter : edges_.end();
+    }
 };
 
-template <class Weight, class Predicate>
-class FilteredFlowNetwork {
-    FlowNetwork<Weight>& graph_;
-    Predicate function_;
+}  // namespace graph
 
+namespace flow {
+template <class FlowNetwork>
+class FlowNetworkBuilder;
+
+using Vertex = size_t;
+
+template <class Weight, class Vertex = ::lib::flow::Vertex>
+struct Edge {
+    using Weight_t = Weight;
+    Vertex from;
+    Vertex to;
+    Weight weight;
+    Edge *back_edge;
+};
+
+template <class Weight>
+class FlowNetwork final : public graph::Graph<Vertex, Edge<Weight>> {
 public:
-    FilteredFlowNetwork(FlowNetwork<Weight>& graph, Predicate function)
+    Vertex GetSource() const noexcept {
+        return source_;
+    }
+
+    Vertex GetSink() const noexcept {
+        return sink_;
+    }
+
+    friend FlowNetworkBuilder<FlowNetwork<Weight>>;
+
+private:
+    Vertex source_;
+    Vertex sink_;
+
+    explicit FlowNetwork(Vertex source, Vertex sink, int nodes_count, int edges_count)
+        : graph::Graph<Vertex, Edge<Weight>>(nodes_count, edges_count),
+          source_(source),
+          sink_(sink) {
+    }
+};
+
+template <class FlowNetwork, class Predicate>
+class FilteredFlowNetwork {
+public:
+    FilteredFlowNetwork(FlowNetwork *graph, Predicate function)
         : graph_(graph), function_(function) {
     }
 
     auto EdgesCount() const noexcept -> int {
-        return graph_.EdgesCount();
+        return graph_->EdgesCount();
     }
 
-    auto GetDegree(int node) const noexcept -> int {
-        return graph_.GetDegree(node);
+    auto GetDegree(FlowNetwork::Vertex_t node) const noexcept -> int {
+        return graph_->GetDegree(node);
     }
 
     auto NodesCount() const noexcept -> int {
-        return graph_.NodesCount();
+        return graph_->NodesCount();
     }
 
-    auto GetSource() const noexcept -> int {
-        return graph_.GetSource();
+    auto GetSource() const noexcept -> FlowNetwork::Vertex_t {
+        return graph_->GetSource();
     }
 
-    auto GetSink() const noexcept -> int {
-        return graph_.GetSink();
-    }
-
-    auto GetTarget(const Edge<Weight>& edge) const noexcept -> int {
-        return graph_.GetTarget(edge);
-    }
-
-    auto GetOutgoingEdges(int node) {
-        return graph_.GetOutgoingEdges(node) | std::views::filter(function_);
-    }
-
-    auto GetOutgoingEdges(int node) const {
-        return graph_.GetOutgoingEdges(node) | std::views::filter(function_);
-    }
-};
-
-template <class Weight>
-class FlowNetworkBuilder {
-    int edges_count_ = 0;
-    int source_, sink_;
-    std::vector<std::vector<Edge<Weight>>> adjacency_list_;
-
-    class BackEdgesBuildingVisitor : public traverse::BfsVisitor<int, Edge<Weight>> {
-        FlowNetwork<Weight>& graph_;
-
-    public:
-        BackEdgesBuildingVisitor(FlowNetwork<Weight>& graph) : graph_(graph) {
-        }
-
-        auto ExamineEdge(Edge<Weight>& edge) -> void override {
-            if (!edge.back_edge) {
-                auto iter = graph_.FindEdge(edge.to, edge.from);
-                while (iter->weight != Weight{}) {
-                    ++iter;
-                }
-                edge.back_edge = &*iter;
-                edge.back_edge->back_edge = &edge;
-            }
-        }
-    };
-
-    auto BuildStarts(FlowNetwork<Weight>& graph) const -> void {
-        if (!adjacency_list_.empty()) {
-            graph.starts_[0] = 0;
-            for (int i = 0; const auto& list : adjacency_list_) {
-                if (++i < static_cast<int>(graph.starts_.size())) {
-                    graph.starts_[i] = graph.starts_[i - 1] + list.size();
-                }
-            }
-        }
-    }
-
-    auto BuildEdges(FlowNetwork<Weight>& graph) -> void {
-        for (auto edge_it = graph.edges_.begin(); auto& list : adjacency_list_) {
-            for (auto&& edge : list) {
-                *edge_it++ = std::move(edge);
-            }
-        }
-        std::sort(graph.edges_.begin(), graph.edges_.end(),
-                  [](const Edge<Weight>& lhs, const Edge<Weight>& rhs) {
-                      return std::tie(lhs.from, lhs.to) < std::tie(rhs.from, rhs.to);
-                  });
-    }
-
-    auto BuildBackEdges(FlowNetwork<Weight>& graph) -> void {
-        BackEdgesBuildingVisitor visitor{graph};
-        traverse::BreadthFirstSearch(source_, graph, visitor);
+    auto GetSink() const noexcept -> FlowNetwork::Vertex_t {
+        return graph_->GetSink();
     }
 
 public:
-    auto AddEdge(int from, int to, Weight weight) -> void {
+    auto GetTarget(const FlowNetwork::Edge_t &edge) const noexcept -> FlowNetwork::Vertex_t {
+        return graph_->GetTarget(edge);
+    }
+
+    auto GetOutgoingEdges(FlowNetwork::Vertex_t node) {
+        return graph_->GetOutgoingEdges(node) | std::views::filter(function_);
+    }
+
+    auto GetOutgoingEdges(FlowNetwork::Vertex_t node) const {
+        return graph_->GetOutgoingEdges(node) | std::views::filter(function_);
+    }
+
+private:
+    FlowNetwork *graph_;
+    Predicate function_;
+};
+
+template <class FlowNetwork>
+class FlowNetworkBuilder {
+private:
+    using Edge = FlowNetwork::Edge_t;
+    using Vertex = FlowNetwork::Vertex_t;
+    using Weight = Edge::Weight_t;
+
+public:
+    auto AddEdge(Vertex from, Vertex to, Weight weight) -> decltype(*this) {
         adjacency_list_[from].emplace_back(from, to, weight, nullptr);
         ++edges_count_;
         adjacency_list_[to].emplace_back(to, from, Weight{}, nullptr);
         ++edges_count_;
+        return *this;
     }
 
-    auto SetNodes(int nodes_count) -> void {
+    auto SetNodes(int nodes_count) -> decltype(*this) {
         adjacency_list_.resize(nodes_count);
+        return *this;
     }
 
-    auto SetSource(int source) -> void {
+    auto SetSource(Vertex source) -> decltype(*this) {
         source_ = source;
+        return *this;
     }
-    auto SetSink(int sink) -> void {
+    auto SetSink(Vertex sink) -> decltype(*this) {
         sink_ = sink;
+        return *this;
     }
 
-    auto Build() -> FlowNetwork<Weight> {
-        FlowNetwork<Weight> graph{source_, sink_, static_cast<int>(adjacency_list_.size()),
-                                  edges_count_};
-        BuildStarts(graph);
-        BuildEdges(graph);
-        BuildBackEdges(graph);
+    auto Build() -> FlowNetwork {
+        FlowNetwork graph{source_, sink_, static_cast<int>(adjacency_list_.size()), edges_count_};
+        auto *graph_ptr = &graph;
+        BuildStarts(graph_ptr);
+        BuildEdges(graph_ptr);
+        BuildBackEdges(graph_ptr);
         return graph;
     }
+
+private:
+    int edges_count_ = 0;
+    Vertex source_, sink_;
+    std::vector<std::vector<Edge>> adjacency_list_;
+
+    class BackEdgesBuildingVisitor : public traverse::BfsVisitor<Vertex, Edge> {
+    public:
+        BackEdgesBuildingVisitor(FlowNetwork *graph) : graph_(graph) {
+        }
+
+        auto ExamineEdge(Edge *edge) -> void override {
+            if (edge->back_edge || edge->weight == Weight{}) {
+                return;
+            }
+            auto iter = graph_->FindEdge(edge->to, edge->from);
+            while (iter->weight != Weight{}) {
+                ++iter;
+            }
+            edge->back_edge = &*iter;
+            edge->back_edge->back_edge = edge;
+        }
+
+    private:
+        FlowNetwork *graph_;
+    };
+
+    auto BuildStarts(FlowNetwork *graph) const -> void {
+        if (adjacency_list_.empty()) {
+            return;
+        }
+        graph->starts_[0] = 0;
+        for (int i = 0; const auto &list : adjacency_list_) {
+            if (++i < static_cast<int>(graph->starts_.size())) {
+                graph->starts_[i] = graph->starts_[i - 1] + list.size();
+            }
+        }
+    }
+
+    auto BuildEdges(FlowNetwork *graph) -> void {
+        for (auto edge_it = graph->edges_.begin(); auto &&list : adjacency_list_) {
+            for (auto &&edge : list) {
+                *edge_it++ = std::move(edge);
+            }
+        }
+        std::sort(graph->edges_.begin(), graph->edges_.end(), [](const Edge &lhs, const Edge &rhs) {
+            return std::tie(lhs.from, lhs.to) < std::tie(rhs.from, rhs.to);
+        });
+    }
+
+    auto BuildBackEdges(FlowNetwork *graph) -> void {
+        BackEdgesBuildingVisitor visitor{graph};
+        traverse::BreadthFirstSearch(source_, graph, visitor);
+    }
 };
-}  // namespace graph
+}  // namespace flow
 
 namespace flow {
-using graph::Edge;
-using graph::FilteredFlowNetwork;
-using graph::FlowNetwork;
 using traverse::BfsVisitor;
-
-constexpr int kInfinity = 1000000;
 
 struct Weight {
     int flow_value;
-    int capacity;
-
-    friend auto operator==(const Weight& lhs, const Weight& rhs) -> bool {
-        return std::tie(lhs.capacity, lhs.flow_value) == std::tie(rhs.capacity, rhs.flow_value);
-    }
+    size_t capacity;
 };
-using Path = std::vector<Edge<Weight>*>;
 
-template <class Predicate>
-class PathCollectingVisitor : public BfsVisitor<int, Edge<Weight>> {
-    Path& path_;
-    FilteredFlowNetwork<Weight, Predicate>& graph_;
+auto operator==(const Weight &lhs, const Weight &rhs) -> bool {
+    return std::tie(lhs.capacity, lhs.flow_value) == std::tie(rhs.capacity, rhs.flow_value);
+}
 
+using Path = std::vector<Edge<Weight> *>;
+
+template <class Graph>
+class PathCollectingVisitor : public BfsVisitor<Vertex, Edge<Weight>> {
 public:
-    explicit PathCollectingVisitor(FilteredFlowNetwork<Weight, Predicate>& graph, Path& path)
-        : path_(path), graph_(graph) {
+    explicit PathCollectingVisitor(Graph *graph, Path *path) : path_(path), graph_(graph) {
     }
 
-    auto ExamineEdge(Edge<Weight>& edge) -> void {
-        path_[edge.to] = &edge;
+    auto ExamineEdge(Edge<Weight> *edge) -> void {
+        (*path_)[edge->to] = edge;
     }
 
     auto ShouldRun() -> bool {
-        return path_[graph_.GetSink()] == nullptr;
+        return (*path_)[graph_->GetSink()] == nullptr;
     }
+
+private:
+    Path *path_;
+    Graph *graph_;
 };
 
-auto FindAuxilaryPath(FlowNetwork<Weight>& graph) -> std::optional<Path> {
-    Path path(graph.NodesCount(), nullptr);
+auto FindAuxilaryPath(FlowNetwork<Weight> *graph) -> std::optional<Path> {
+    Path path(graph->NodesCount(), nullptr);
 
-    auto filtered_network = FilteredFlowNetwork(graph, [&graph, &path](auto edge) {
-        return path[edge.to] == nullptr && edge.to != graph.GetSource() &&
-               edge.weight.capacity > edge.weight.flow_value;
-    });
-    PathCollectingVisitor visitor{filtered_network, path};
+    FilteredFlowNetwork filtered_network{
+        graph, [graph, &path](const auto &edge) {
+            return path[edge.to] == nullptr && edge.to != graph->GetSource() &&
+                   edge.weight.capacity - edge.weight.flow_value > 0;
+        }};
+    PathCollectingVisitor visitor{&filtered_network, &path};
 
-    traverse::BreadthFirstSearch(graph.GetSource(), filtered_network, visitor);
-    if (path[graph.GetSink()]) {
+    traverse::BreadthFirstSearch(graph->GetSource(), &filtered_network, visitor);
+    if (path[graph->GetSink()]) {
         return path;
     }
     return std::nullopt;
 }
 
-auto EdmundsKarp(FlowNetwork<Weight>& graph) -> int {
+auto EdmundsKarp(FlowNetwork<Weight> *graph, size_t infinity = 1e9) -> int {
     int flow = 0;
     while (auto path = FindAuxilaryPath(graph)) {
-        int delta_flow = kInfinity;
-        for (auto edge = (*path)[graph.GetSink()]; edge != nullptr; edge = (*path)[edge->from]) {
-            delta_flow = std::min(delta_flow, edge->weight.capacity - edge->weight.flow_value);
+        int delta_flow = infinity;
+        for (auto edge = (*path)[graph->GetSink()]; edge != nullptr; edge = (*path)[edge->from]) {
+            delta_flow = std::min(
+                delta_flow, static_cast<int>(edge->weight.capacity) - edge->weight.flow_value);
         }
-        for (auto edge = (*path)[graph.GetSink()]; edge != nullptr; edge = (*path)[edge->from]) {
+        for (auto edge = (*path)[graph->GetSink()]; edge != nullptr; edge = (*path)[edge->from]) {
             edge->weight.flow_value += delta_flow;
             edge->back_edge->weight.flow_value -= delta_flow;
         }
         flow += delta_flow;
     }
     return flow;
+}
+
+auto ClearFlow(FlowNetwork<Weight> *network) -> void {
+    for (auto &&node : std::views::iota(0, network->NodesCount())) {
+        for (auto &&edge : network->GetOutgoingEdges(node)) {
+            edge.weight.flow_value = 0;
+            edge.back_edge->weight.flow_value = 0;
+        }
+    }
 }
 
 struct Bipartition {
@@ -363,7 +401,7 @@ struct Bipartition {
 
 class ComponentCollectingVisitor : public BfsVisitor<int, Edge<Weight>> {
 public:
-    ComponentCollectingVisitor(std::set<int>& part) : part_(part) {
+    ComponentCollectingVisitor(std::set<int> &part) : part_(part) {
     }
 
     auto DiscoverVertex(int vertex) -> void override {
@@ -371,28 +409,19 @@ public:
     }
 
 private:
-    std::set<int>& part_;
+    std::set<int> &part_;
 };
 
-auto ClearFlow(FlowNetwork<Weight>& network) -> void {
-    for (auto node : std::views::iota(0, network.NodesCount())) {
-        for (auto& edge : network.GetOutgoingEdges(node)) {
-            edge.weight.flow_value = 0;
-            edge.back_edge->weight.flow_value = 0;
-        }
-    }
-}
-
-auto MinimaCut(FlowNetwork<Weight>& graph) -> Bipartition {
+auto MinimaCut(FlowNetwork<Weight> *graph) -> Bipartition {
     Bipartition cut{};
     // Probably should replace
     EdmundsKarp(graph);
     ComponentCollectingVisitor collecter{cut.set_s};
-    auto filtered_graph = FilteredFlowNetwork(
-        graph, [](auto edge) { return edge.weight.capacity > edge.weight.flow_value; });
+    FilteredFlowNetwork filtered_graph{
+        graph, [](const auto &edge) { return edge.weight.capacity > edge.weight.flow_value; }};
 
-    traverse::BreadthFirstSearch(filtered_graph.GetSource(), filtered_graph, collecter);
-    for (auto vertex : std::views::iota(0, graph.NodesCount())) {
+    traverse::BreadthFirstSearch(filtered_graph.GetSource(), &filtered_graph, collecter);
+    for (auto &&vertex : std::views::iota(0, graph->NodesCount())) {
         if (!cut.set_s.contains(vertex)) {
             cut.set_t.insert(vertex);
         }
@@ -402,58 +431,143 @@ auto MinimaCut(FlowNetwork<Weight>& graph) -> Bipartition {
 }
 
 }  // namespace flow
-
 }  // namespace lib
 
 namespace checker {
+
+namespace io {
 using Subgraph = std::vector<int>;
 auto ReadUserInput() -> Subgraph {
-  auto &&subgraph_size = ouf.readInt();
-  Subgraph result(subgraph_size);
-  for (auto &&vertex : result) {
-    vertex = ouf.readInt();
-  }
-  return result;
+    // TODO: validation
+    auto &&subgraph_size = ouf.readInt();
+    Subgraph result_subgraph(subgraph_size);
+    for (auto &&vertex : result_subgraph) {
+        vertex = ouf.readInt();
+    }
+    return result_subgraph;
 }
 
-auto ReadTestInput(std::istream& is = std::cin) -> lib::graph::FlowNetwork<lib::flow::Weight> {
-    lib::graph::FlowNetworkBuilder<lib::flow::Weight> builder;
-    int nodes_count = inf.readInt();
-    int edges_count = inf.readInt();
+struct Edge {
+    int from, to;
+};
+
+struct Test {
+    int nodes_count;
+    std::vector<Edge> edges;
+};
+
+auto ReadTestInput() -> Test {
+    // TODO: validation?
+    const int nodes_count = inf.readInt();
+    const int edges_count = inf.readInt();
+    std::vector<Edge> edges;
+    for (auto &&edge : edges) {
+        edge = {.from = inf.readInt(), .to = inf.readInt()};
+    }
+    return {nodes_count, std::move(edges)};
+}
+}  // namespace io
+
+namespace solution {
+
+using FlowNetwork = ::lib::flow::FlowNetwork<::lib::flow::Weight>;
+
+auto MakeFlowNetwork(::checker::io::Test &&test) -> FlowNetwork {
+    using lib::flow::FlowNetworkBuilder;
+
+    FlowNetworkBuilder<FlowNetwork> builder;
+    const int nodes_count = test.nodes_count;
+    const std::size_t edges_count = test.edges.size();
     const int source = 0;
     const int sink = nodes_count + 1;
 
     const int scale_to_int = nodes_count * (nodes_count - 1);
 
-    builder.SetNodes(nodes_count + 2);
-    builder.SetSource(source);
-    builder.SetSink(sink);
+    builder
+        .SetNodes(nodes_count + 2)  //
+        .SetSource(source)          //
+        .SetSink(sink);
 
-    for (auto i : std::views::iota(1, nodes_count + 1)) {
-        builder.AddEdge(source, i, {0, edges_count * scale_to_int});
-        builder.AddEdge(i, sink, {0, 1});
+    for (auto &&i : std::views::iota(1, nodes_count + 1)) {
+        builder
+            .AddEdge(source, i, {0, edges_count * scale_to_int})  //
+            .AddEdge(i, sink, {0, 1});
     }
 
-    while (edges_count--) {
-        int from = inf.readInt();
-        int to = inf.readInt();
-        builder.AddEdge(from, to, {0, scale_to_int});
-        builder.AddEdge(to, from, {0, scale_to_int});
+    for (auto &&edge : test.edges) {
+        builder
+            .AddEdge(edge.from, edge.to, {0, edges_count})  //
+            .AddEdge(edge.to, edge.from, {0, edges_count});
     }
 
     return builder.Build();
 }
-} // namespace checker
+
+auto UpdateSinkCapacities(FlowNetwork *graph, int guess) -> void {
+    const int nodes_count = graph->NodesCount() - 2;
+    const int edges_count = graph->EdgesCount() / 4 - nodes_count;
+    const int scale_to_int = nodes_count * (nodes_count - 1);
+
+    for (auto &&edge : graph->GetOutgoingEdges(graph->GetSink())) {
+        edge.back_edge->weight.capacity = edges_count * scale_to_int + 2 * guess -
+                                          (graph->GetDegree(edge.to) / 2 - 1) * scale_to_int;
+    }
+}
+
+auto FindMaxDensitySubgraph(FlowNetwork &&graph) -> io::Subgraph {
+    const int nodes_count = graph.NodesCount() - 2;
+    const int edges_count = graph.EdgesCount() / 4 - nodes_count;
+    const int scale_to_int = nodes_count * (nodes_count - 1);
+    const int lower = 0;
+    const int upper = edges_count * scale_to_int;
+
+    std::set<int> subgraph{};
+    lib::algo::BinarySearch(lower, upper, [&graph, &subgraph, edges_count](int guess) {
+        UpdateSinkCapacities(&graph, guess);
+        const auto mincut = lib::flow::MinimaCut(&graph);
+        if (mincut.set_s.size() == 1) {
+            if (guess == edges_count) {
+                subgraph = mincut.set_t;
+                subgraph.erase(graph.GetSink());
+            }
+            return true;
+        } else {
+            subgraph = mincut.set_s;
+            subgraph.erase(graph.GetSource());
+            return false;
+        }
+    });
+
+    // TODO: manage no copy
+    return {subgraph.begin(), subgraph.end()};
+}
+
+// auto PrintSubgraph(const std::set<int> &subgraph, std::ostream &os = std::cout) -> void {
+//     if (auto size = subgraph.size(); size != 0) {
+//         os << subgraph.size() << '\n';
+//         for (auto vertex : subgraph) {
+//             os << vertex << '\n';
+//         }
+//     } else {
+//         std::cout << "1\n1\n";
+//     }
+// }
+
+}  // namespace solution
+
+// TODO: Compare solutions
+
+}  // namespace checker
 
 auto main(int argc, char *argv[]) -> int {
 
-  std::ios::sync_with_stdio(false);
-  std::ios_base::sync_with_stdio(false);
-  std::cin.tie(nullptr);
-  std::cout.tie(nullptr);
+    std::ios::sync_with_stdio(false);
+    std::ios_base::sync_with_stdio(false);
+    std::cin.tie(nullptr);
+    std::cout.tie(nullptr);
 
-  setName("Max density subgraph problem");
-  registerTestlibCmd(argc, argv);
+    setName("Max density subgraph problem");
+    registerTestlibCmd(argc, argv);
 
-  auto &&subgraph = checker::ReadUserInput();
+    auto &&subgraph = checker::io::ReadUserInput();
 }

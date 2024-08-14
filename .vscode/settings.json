@@ -1,4 +1,6 @@
 {
+    "editor.formatOnSave": true,
+    "cmake.configureOnOpen": true,
     "latex-workshop.latex.recipes": [
         {
             "name": "pdflatex -> bibtex -> pdflatex*2",
