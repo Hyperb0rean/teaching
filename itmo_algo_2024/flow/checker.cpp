@@ -434,18 +434,7 @@ auto MinimaCut(FlowNetwork<Weight> *graph) -> Bipartition {
 }  // namespace lib
 
 namespace checker {
-
-namespace io {
-using Subgraph = std::vector<int>;
-auto ReadUserInput() -> Subgraph {
-    // TODO: validation
-    auto &&subgraph_size = ouf.readInt();
-    Subgraph result_subgraph(subgraph_size);
-    for (auto &&vertex : result_subgraph) {
-        vertex = ouf.readInt();
-    }
-    return result_subgraph;
-}
+using Subgraph = std::set<int>;
 
 struct Edge {
     int from, to;
@@ -456,23 +445,11 @@ struct Test {
     std::vector<Edge> edges;
 };
 
-auto ReadTestInput() -> Test {
-    // TODO: validation?
-    const int nodes_count = inf.readInt();
-    const int edges_count = inf.readInt();
-    std::vector<Edge> edges;
-    for (auto &&edge : edges) {
-        edge = {.from = inf.readInt(), .to = inf.readInt()};
-    }
-    return {nodes_count, std::move(edges)};
-}
-}  // namespace io
-
 namespace solution {
 
 using FlowNetwork = ::lib::flow::FlowNetwork<::lib::flow::Weight>;
 
-auto MakeFlowNetwork(::checker::io::Test &&test) -> FlowNetwork {
+auto MakeFlowNetwork(Test &&test) -> FlowNetwork {
     using lib::flow::FlowNetworkBuilder;
 
     FlowNetworkBuilder<FlowNetwork> builder;
@@ -514,48 +491,75 @@ auto UpdateSinkCapacities(FlowNetwork *graph, int guess) -> void {
     }
 }
 
-auto FindMaxDensitySubgraph(FlowNetwork &&graph) -> io::Subgraph {
-    const int nodes_count = graph.NodesCount() - 2;
-    const int edges_count = graph.EdgesCount() / 4 - nodes_count;
+auto FindMaxDensitySubgraph(FlowNetwork *graph) -> Subgraph {
+    const int nodes_count = graph->NodesCount() - 2;
+    const int edges_count = graph->EdgesCount() / 4 - nodes_count;
     const int scale_to_int = nodes_count * (nodes_count - 1);
     const int lower = 0;
     const int upper = edges_count * scale_to_int;
 
-    std::set<int> subgraph{};
+    std::set<int> subgraph;
     lib::algo::BinarySearch(lower, upper, [&graph, &subgraph, edges_count](int guess) {
-        UpdateSinkCapacities(&graph, guess);
-        const auto mincut = lib::flow::MinimaCut(&graph);
+        UpdateSinkCapacities(graph, guess);
+        const auto mincut = lib::flow::MinimaCut(graph);
         if (mincut.set_s.size() == 1) {
             if (guess == edges_count) {
                 subgraph = mincut.set_t;
-                subgraph.erase(graph.GetSink());
+                subgraph.erase(graph->GetSink());
             }
             return true;
         } else {
             subgraph = mincut.set_s;
-            subgraph.erase(graph.GetSource());
+            subgraph.erase(graph->GetSource());
             return false;
         }
     });
 
-    // TODO: manage no copy
-    return {subgraph.begin(), subgraph.end()};
+    return subgraph;
 }
-
-// auto PrintSubgraph(const std::set<int> &subgraph, std::ostream &os = std::cout) -> void {
-//     if (auto size = subgraph.size(); size != 0) {
-//         os << subgraph.size() << '\n';
-//         for (auto vertex : subgraph) {
-//             os << vertex << '\n';
-//         }
-//     } else {
-//         std::cout << "1\n1\n";
-//     }
-// }
 
 }  // namespace solution
 
-// TODO: Compare solutions
+namespace io {
+auto ReadUserInput() -> Subgraph {
+    // TODO: validation of right order
+    auto &&subgraph_size = ouf.readInt();
+    Subgraph result_subgraph;
+    for (auto i : std::views::iota(0, subgraph_size)) {
+        if (!result_subgraph.insert(ouf.readInt()).second) {
+            quitf(_pe, "Duplication of vertecies");
+        }
+    }
+    return result_subgraph;
+}
+
+auto ReadTestInput() -> Test {
+    // TODO: validation?
+    const int nodes_count = inf.readInt();
+    const int edges_count = inf.readInt();
+    std::vector<Edge> edges;
+    for (auto &&edge : edges) {
+        edge = {.from = inf.readInt(), .to = inf.readInt()};
+    }
+    return {nodes_count, std::move(edges)};
+}
+}  // namespace io
+
+struct Verdict {
+    TResult result;
+    std::string message;
+};
+
+template <class Graph>
+Verdict Check(const Graph &network, Subgraph &&user, Subgraph &&test) {
+    if (user == test) {
+        return {_ok, "Test passed!"};
+    }
+
+    // TODO: check density
+
+    return {_wa, "Wrong answer"};
+}
 
 }  // namespace checker
 
@@ -569,5 +573,11 @@ auto main(int argc, char *argv[]) -> int {
     setName("Max density subgraph problem");
     registerTestlibCmd(argc, argv);
 
-    auto &&subgraph = checker::io::ReadUserInput();
+    auto &&user_subgraph = checker::io::ReadUserInput();
+    auto &&flow_network = checker::solution::MakeFlowNetwork(checker::io::ReadTestInput());
+    auto &&test_subgraph = checker::solution::FindMaxDensitySubgraph(&flow_network);
+    auto &&[result, message] =
+        checker::Check(flow_network, std::move(test_subgraph), std::move(user_subgraph));
+
+    quitf(result, "%s", message.data());
 }
