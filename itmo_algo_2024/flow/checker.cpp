@@ -1,4 +1,5 @@
-#include "../testlib.h"
+#include "testlib.h"
+
 #include <algorithm>
 #include <cstddef>
 #include <cstdlib>
@@ -14,6 +15,7 @@
 #include <unordered_set>
 #include <utility>
 #include <vector>
+#include <set>
 
 namespace lib {
 
@@ -35,7 +37,7 @@ auto BinarySearch(int left, int right, Predicate predicate = Predicate{}) -> int
 template <class Iterator, class Predicate>
 auto BinarySearch(Iterator left, Iterator right, Predicate predicate = Predicate{})
     -> Iterator requires std::random_access_iterator<Iterator> {
-    auto &&index = BinarySearch(-1, std::distance(left, right),
+    auto &&index = BinarySearch(-1, static_cast<int>(std::distance(left, right)),
                                 [predicate, &left](int mid) { return predicate(*(left + mid)); });
     return left + index;
 }
@@ -132,7 +134,7 @@ protected:
     auto FindEdge(Vertex from, Vertex to) -> std::vector<Edge>::iterator {
         auto &&edges = GetOutgoingEdges(from);
         auto iter = algo::BinarySearch(edges.begin(), edges.end(),
-                                       [&to](auto mid) { return mid.to >= to; });
+                                       [&to](auto &&mid) { return mid.to >= to; });
         return iter->to == to ? iter : edges_.end();
     }
 };
@@ -143,7 +145,7 @@ namespace flow {
 template <class FlowNetwork>
 class FlowNetworkBuilder;
 
-using Vertex = size_t;
+using Vertex = int;
 
 template <class Weight, class Vertex = ::lib::flow::Vertex>
 struct Edge {
@@ -267,7 +269,7 @@ private:
     Vertex source_, sink_;
     std::vector<std::vector<Edge>> adjacency_list_;
 
-    class BackEdgesBuildingVisitor : public traverse::BfsVisitor<Vertex, Edge> {
+    class BackEdgesBuildingVisitor final : public traverse::BfsVisitor<Vertex, Edge> {
     public:
         BackEdgesBuildingVisitor(FlowNetwork *graph) : graph_(graph) {
         }
@@ -295,7 +297,7 @@ private:
         graph->starts_[0] = 0;
         for (int i = 0; const auto &list : adjacency_list_) {
             if (++i < static_cast<int>(graph->starts_.size())) {
-                graph->starts_[i] = graph->starts_[i - 1] + list.size();
+                graph->starts_[i] = graph->starts_[i - 1] + static_cast<int>(list.size());
             }
         }
     }
@@ -323,7 +325,7 @@ using traverse::BfsVisitor;
 
 struct Weight {
     int flow_value;
-    size_t capacity;
+    int capacity;
 };
 
 auto operator==(const Weight &lhs, const Weight &rhs) -> bool {
@@ -333,7 +335,7 @@ auto operator==(const Weight &lhs, const Weight &rhs) -> bool {
 using Path = std::vector<Edge<Weight> *>;
 
 template <class Graph>
-class PathCollectingVisitor : public BfsVisitor<Vertex, Edge<Weight>> {
+class PathCollectingVisitor final : public BfsVisitor<Vertex, Edge<Weight>> {
 public:
     explicit PathCollectingVisitor(Graph *graph, Path *path) : path_(path), graph_(graph) {
     }
@@ -368,13 +370,12 @@ auto FindAuxilaryPath(FlowNetwork<Weight> *graph) -> std::optional<Path> {
     return std::nullopt;
 }
 
-auto EdmundsKarp(FlowNetwork<Weight> *graph, size_t infinity = 1e9) -> int {
+auto EdmundsKarp(FlowNetwork<Weight> *graph, int infinity = 1e9) -> int {
     int flow = 0;
     while (auto path = FindAuxilaryPath(graph)) {
         int delta_flow = infinity;
         for (auto edge = (*path)[graph->GetSink()]; edge != nullptr; edge = (*path)[edge->from]) {
-            delta_flow = std::min(
-                delta_flow, static_cast<int>(edge->weight.capacity) - edge->weight.flow_value);
+            delta_flow = std::min(delta_flow, edge->weight.capacity - edge->weight.flow_value);
         }
         for (auto edge = (*path)[graph->GetSink()]; edge != nullptr; edge = (*path)[edge->from]) {
             edge->weight.flow_value += delta_flow;
@@ -399,7 +400,7 @@ struct Bipartition {
     std::set<int> set_t;
 };
 
-class ComponentCollectingVisitor : public BfsVisitor<int, Edge<Weight>> {
+class ComponentCollectingVisitor final : public BfsVisitor<int, Edge<Weight>> {
 public:
     ComponentCollectingVisitor(std::set<int> &part) : part_(part) {
     }
@@ -433,7 +434,7 @@ auto MinimaCut(FlowNetwork<Weight> *graph) -> Bipartition {
 }  // namespace flow
 }  // namespace lib
 
-namespace checker {
+namespace check {
 using Subgraph = std::set<int>;
 
 struct Edge {
@@ -454,7 +455,7 @@ auto MakeFlowNetwork(Test &&test) -> FlowNetwork {
 
     FlowNetworkBuilder<FlowNetwork> builder;
     const int nodes_count = test.nodes_count;
-    const std::size_t edges_count = test.edges.size();
+    const int edges_count = static_cast<int>(test.edges.size());
     const int source = 0;
     const int sink = nodes_count + 1;
 
@@ -465,7 +466,7 @@ auto MakeFlowNetwork(Test &&test) -> FlowNetwork {
         .SetSource(source)          //
         .SetSink(sink);
 
-    for (auto &&i : std::views::iota(1, nodes_count + 1)) {
+    for (auto i : std::views::iota(1, nodes_count + 1)) {
         builder
             .AddEdge(source, i, {0, edges_count * scale_to_int})  //
             .AddEdge(i, sink, {0, 1});
@@ -473,8 +474,8 @@ auto MakeFlowNetwork(Test &&test) -> FlowNetwork {
 
     for (auto &&edge : test.edges) {
         builder
-            .AddEdge(edge.from, edge.to, {0, edges_count})  //
-            .AddEdge(edge.to, edge.from, {0, edges_count});
+            .AddEdge(edge.from, edge.to, {0, scale_to_int})  //
+            .AddEdge(edge.to, edge.from, {0, scale_to_int});
     }
 
     return builder.Build();
@@ -525,7 +526,7 @@ auto ReadUserInput() -> Subgraph {
     // TODO: validation of right order
     auto &&subgraph_size = ouf.readInt();
     Subgraph result_subgraph;
-    for (auto i : std::views::iota(0, subgraph_size)) {
+    while (subgraph_size--) {
         if (!result_subgraph.insert(ouf.readInt()).second) {
             quitf(_pe, "Duplication of vertecies");
         }
@@ -534,10 +535,9 @@ auto ReadUserInput() -> Subgraph {
 }
 
 auto ReadTestInput() -> Test {
-    // TODO: validation?
     const int nodes_count = inf.readInt();
     const int edges_count = inf.readInt();
-    std::vector<Edge> edges;
+    std::vector<Edge> edges(edges_count);
     for (auto &&edge : edges) {
         edge = {.from = inf.readInt(), .to = inf.readInt()};
     }
@@ -551,17 +551,39 @@ struct Verdict {
 };
 
 template <class Graph>
-Verdict Check(const Graph &network, Subgraph &&user, Subgraph &&test) {
+auto CountEdges(const Graph &graph, const Subgraph &subgraph) -> int {
+    int result;
+    for (auto &&node : std::views::iota(0, graph.NodesCount())) {
+        for (auto &&edge : graph.GetOutgoingEdges(node)) {
+            if (subgraph.contains(node) && subgraph.contains(graph.GetTarget(edge))) {
+                ++result;
+            }
+        }
+    }
+    return result;
+}
+
+template <class Graph>
+auto Check(const Graph &network, Subgraph &&user, Subgraph &&test) -> Verdict {
     if (user == test) {
         return {_ok, "Test passed!"};
     }
 
-    // TODO: check density
+    if (user.size() > network.NodesCount() - 2) {
+        return {_wa, "Wrong graph"};
+    }
 
-    return {_wa, "Wrong answer"};
+    const int test_edges = CountEdges(network, test);
+    const int user_edges = CountEdges(network, user);
+
+    if (user_edges * test.size() >= test_edges * user.size()) {
+        return {_ok, "Test passed!"};
+    }
+
+    return {_wa, "Test failed!"};
 }
 
-}  // namespace checker
+}  // namespace check
 
 auto main(int argc, char *argv[]) -> int {
 
@@ -573,11 +595,11 @@ auto main(int argc, char *argv[]) -> int {
     setName("Max density subgraph problem");
     registerTestlibCmd(argc, argv);
 
-    auto &&user_subgraph = checker::io::ReadUserInput();
-    auto &&flow_network = checker::solution::MakeFlowNetwork(checker::io::ReadTestInput());
-    auto &&test_subgraph = checker::solution::FindMaxDensitySubgraph(&flow_network);
+    auto &&user_subgraph = check::io::ReadUserInput();
+    auto &&flow_network = check::solution::MakeFlowNetwork(check::io::ReadTestInput());
+    auto &&test_subgraph = check::solution::FindMaxDensitySubgraph(&flow_network);
     auto &&[result, message] =
-        checker::Check(flow_network, std::move(test_subgraph), std::move(user_subgraph));
+        check::Check(flow_network, std::move(user_subgraph), std::move(test_subgraph));
 
     quitf(result, "%s", message.data());
 }
