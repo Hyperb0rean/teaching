@@ -1,7 +1,9 @@
-.vscode/*
-.vscode/settings.json
+.vscode*
 *.aux
 *.log
 *.out
 *.gz
 *.toc
+build*
+compile_commands.json
+.cache
