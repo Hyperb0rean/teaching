@@ -22,9 +22,10 @@ auto DepthFirstSearch(Vertex origin_vertex, Graph& graph, Visitor visitor,
         visitor.ExamineEdge(edge);
         if (const auto& target = graph.GetTarget(edge); !visited.contains(target)) {
             DepthFirstSearch(target, graph, visitor, visited);
+            visitor.DropFromChild(origin_vertex);
         }
     }
-    visitor.ExamineVertex(origin_vertex);
+    visitor.Drop();
 }
 
 template <class Vertex, class Edge>
@@ -32,7 +33,8 @@ class GraphVisitor {
 public:
     virtual auto DiscoverVertex(Vertex /*vertex*/) -> void = 0;
     virtual auto ExamineEdge(Edge& /*edge*/) -> void = 0;
-    virtual auto ExamineVertex(Vertex /*vertex*/) -> void = 0;
+    virtual auto DropFromChild(Vertex /*vertex*/) -> void = 0;
+    virtual auto Drop() -> void = 0;
     virtual ~GraphVisitor() = default;
 };
 }  // namespace traverse
@@ -152,21 +154,24 @@ auto MakeIndex(tree::Tree&& tr) -> Index {
     struct IndexVisitor : traverse::GraphVisitor<Vertex, Edge> {
         auto DiscoverVertex(Vertex vertex) -> void override {
             index_.vertex_to_depth_index_[vertex] = index_.depth_.size();
-            index_.depth_.push_back(depth++);
+            index_.depth_.push_back(++depth);
             index_.vertex_.push_back(vertex);
         }
         virtual auto ExamineEdge(Edge& /*edge*/) -> void override {
-            //
         }
-        virtual auto ExamineVertex(Vertex /*vertex*/) -> void override {
+        virtual auto Drop() -> void override {
             --depth;
+        }
+        virtual auto DropFromChild(Vertex vertex) -> void override {
+            index_.depth_.push_back(depth);
+            index_.vertex_.push_back(vertex);
         }
 
         IndexVisitor(Index& index) : index_(index) {
         }
 
         Index& index_;
-        int depth = 0;
+        int depth = -1;
     } visitor{result};
 
     std::unordered_set<Vertex> visited;
@@ -182,30 +187,33 @@ public:
         PrecalcSparseTable();
     }
 
-    auto Query(int left, int right) -> int {
+    auto Query(int left, int right) const -> int {
+        std::cout << left << " " << right << "\n";
         int j = floor_[right - left + 1];
-        return std::min(sparse_table_[j][left], sparse_table_[j][right - (1 << j) + 1]);
+        int idx1 = sparse_table_[j][left];
+        int idx2 = sparse_table_[j][right - (1 << j) + 1];
+        return (index_[idx1] < index_[idx2]) ? idx1 : idx2;
     }
 
 private:
     auto PrecalcSparseTable() -> void {
         int const log = std::log2(std::ssize(index_)) + 1;
-        sparse_table_.resize(log, std::vector<int>(std::ssize(index_)));
+        sparse_table_.resize(log, std::vector<int>(std::ssize(index_), 0));
         for (int i : std::views::iota(0, std::ssize(index_))) {
-            sparse_table_[0][i] = index_[i];
+            sparse_table_[0][i] = i;
         }
-
-        for (int j = 1; (1 << j) != std::ssize(index_); ++j) {
-            for (int i = 0; i + (1 << j) != std::ssize(index_); ++i) {
-                sparse_table_[j][i] =
-                    std::min(sparse_table_[j - 1][i], sparse_table_[j - 1][i + (1 << (j - 1))]);
+        for (int j = 1; (1 << j) <= std::ssize(index_); ++j) {
+            for (int i = 0; i <= std::ssize(index_) - (1 << j); ++i) {
+                int idx1 = sparse_table_[j - 1][i];
+                int idx2 = sparse_table_[j - 1][i + (1 << (j - 1))];
+                sparse_table_[j][i] = (index_[idx1] < index_[idx2]) ? idx1 : idx2;
             }
         }
     }
 
     auto PrecalcFloor() -> void {
-        floor_.resize(index_.size() + 1);
-        for (int i : std::views::iota(2, std::ssize(index_))) {
+        floor_.resize(index_.size() + 1, 0);
+        for (int i : std::views::iota(2, std::ssize(index_) + 1)) {
             floor_[i] = floor_[i / 2] + 1;
         }
     }
@@ -223,9 +231,10 @@ public:
           vertex_to_depth_index_(std::move(index.vertex_to_depth_index_)) {
     }
 
-    auto Query(tree::Vertex left, tree::Vertex right) -> tree::Vertex {
-        return vertex_[rmq_.Query(vertex_to_depth_index_.at(left),
-                                  vertex_to_depth_index_.at(right))];
+    auto Query(tree::Vertex first, tree::Vertex second) -> tree::Vertex {
+        auto&& [left, right] =
+            std::minmax(vertex_to_depth_index_.at(first), vertex_to_depth_index_.at(second));
+        return vertex_[rmq_.Query(left, right)];
     }
 
 private:
