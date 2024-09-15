@@ -182,6 +182,11 @@ public:
         return (depth_[idx1] < depth_[idx2]) ? idx1 : idx2;
     }
 
+    auto Distance(int left, int right) const -> int {
+        int root = Query(left, right);
+        return (depth_[left] - depth_[root]) + (depth_[right] - depth_[root]);
+    }
+
 private:
     auto PrecalcSparseTable() -> void {
         int const log = std::log2(std::ssize(depth_)) + 1;
@@ -224,6 +229,12 @@ public:
         return vertex_[rmq_.Query(left, right)];
     }
 
+    auto Distance(tree::Vertex first, tree::Vertex second) -> tree::Vertex {
+        auto&& [left, right] =
+            std::minmax(vertex_to_depth_index_.at(first), vertex_to_depth_index_.at(second));
+        return rmq_.Distance(left, right);
+    }
+
 private:
     RMQ rmq_;
     std::vector<tree::Vertex> vertex_;
@@ -240,6 +251,16 @@ auto FindAncestors(Index&& index, std::vector<io::Query>&& queries) -> std::vect
     return output;
 }
 
+auto FindDistancies(Index&& index, std::vector<io::Query>&& queries) -> std::vector<int> {
+    LCA lca{std::move(index)};
+
+    std::vector output(queries.size(), 0);
+    for (int i : std::views::iota(0, std::ssize(queries))) {
+        output[i] = lca.Distance(queries[i].left_id, queries[i].right_id);
+    }
+    return output;
+}
+
 }  // namespace solution
 
 int main() {
@@ -247,5 +268,5 @@ int main() {
 
     auto&& test = io::ReadInput();
     auto&& index = MakeIndex(MakeTree(test));
-    io::PrintOutput(FindAncestors(std::move(index), std::move(test.queries)));
+    io::PrintOutput(FindDistancies(std::move(index), std::move(test.queries)));
 }
