@@ -1,7 +1,5 @@
 
 #include <algorithm>
-#include <cstddef>
-#include <cstdlib>
 #include <iostream>
 #include <istream>
 #include <iterator>
@@ -9,7 +7,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
-#include <numeric>
+#include <cmath>
 
 namespace solution {
 
@@ -125,7 +123,14 @@ auto ReadInput(std::istream& is = std::cin) -> Test {
     return test;
 }
 
+auto PrintOutput(std::vector<int>&& output, std::ostream& os = std::cout) -> void {
+    for (auto&& val : output) {
+        os << val << "\n";
+    }
+}
+
 }  // namespace io
+
 auto MakeTree(io::Test const& test) -> tree::Tree {
     tree::Tree result;
     result.SetRoot(test.root);
@@ -170,12 +175,73 @@ auto MakeIndex(tree::Tree&& tr) -> Index {
     return result;
 }
 
-namespace rmq {
-auto RMQ(std::vector<int> const& index, int left, int right) -> int {
-}
-}  // namespace rmq
+class RMQ {
+public:
+    RMQ(std::vector<int>&& d) : index_(std::move(d)) {
+        PrecalcFloor();
+        PrecalcSparseTable();
+    }
 
-auto LCA() -> tree::Vertex {
+    auto Query(int left, int right) -> int {
+        int j = floor_[right - left + 1];
+        return std::min(sparse_table_[j][left], sparse_table_[j][right - (1 << j) + 1]);
+    }
+
+private:
+    auto PrecalcSparseTable() -> void {
+        int const log = std::log2(std::ssize(index_)) + 1;
+        sparse_table_.resize(log, std::vector<int>(std::ssize(index_)));
+        for (int i : std::views::iota(0, std::ssize(index_))) {
+            sparse_table_[0][i] = index_[i];
+        }
+
+        for (int j = 1; (1 << j) != std::ssize(index_); ++j) {
+            for (int i = 0; i + (1 << j) != std::ssize(index_); ++i) {
+                sparse_table_[j][i] =
+                    std::min(sparse_table_[j - 1][i], sparse_table_[j - 1][i + (1 << (j - 1))]);
+            }
+        }
+    }
+
+    auto PrecalcFloor() -> void {
+        floor_.resize(index_.size() + 1);
+        for (int i : std::views::iota(2, std::ssize(index_))) {
+            floor_[i] = floor_[i / 2] + 1;
+        }
+    }
+
+    std::vector<int> index_;
+    std::vector<std::vector<int>> sparse_table_;
+    std::vector<int> floor_;
+};
+
+class LCA {
+public:
+    LCA(Index&& index)
+        : rmq_(std::move(index.depth_)),
+          vertex_(std::move(index.vertex_)),
+          vertex_to_depth_index_(std::move(index.vertex_to_depth_index_)) {
+    }
+
+    auto Query(tree::Vertex left, tree::Vertex right) -> tree::Vertex {
+        return vertex_[rmq_.Query(vertex_to_depth_index_.at(left),
+                                  vertex_to_depth_index_.at(right))];
+    }
+
+private:
+    RMQ rmq_;
+    std::vector<tree::Vertex> vertex_;
+    std::unordered_map<tree::Vertex, int> vertex_to_depth_index_;
+};
+
+auto FindDistancies(Index&& index, std::vector<io::Query>&& queries) -> std::vector<int> {
+    LCA lca{std::move(index)};
+
+    std::vector output(queries.size(), 0);
+    for (int i : std::views::iota(0, std::ssize(queries))) {
+        output[i] = lca.Query(queries[i].left_id, queries[i].right_id);
+    }
+    return output;
 }
 
 }  // namespace solution
@@ -185,30 +251,19 @@ int main() {
 
     auto&& test = io::ReadInput();
     auto&& index = MakeIndex(MakeTree(test));
-    // struct PrintingVisitor : traverse::GraphVisitor<Vertex, Edge> {
-    //     auto DiscoverVertex(Vertex vertex) -> void override {
-    //         std::cout << "Discover: " << vertex << "\n";
-    //     }
-    //     virtual auto ExamineEdge(Edge& edge) -> void override {
-    //         std::cout << "Examine edge: " << edge.from << " " << edge.to << "\n";
-    //     }
-    //     virtual auto ExamineVertex(Vertex vertex) -> void override {
-    //         std::cout << "Examine: " << vertex << "\n";
-    //     }
-    // } visitor;
 
-    // std::unordered_set<Vertex> visited;
-    // traverse::DepthFirstSearch(test.root, tree, visitor, visited);
+    for (auto&& d : index.depth_) {
+        std::cout << d << ' ';
+    }
+    std::cout << "\n";
+    for (auto&& v : index.vertex_) {
+        std::cout << v << ' ';
+    }
+    std::cout << "\n";
+    for (auto&& [v, d] : index.vertex_to_depth_index_) {
+        std::cout << v << ' ' << d << "  ";
+    }
+    std::cout << "\n";
 
-    // for (auto&& d : index.depth_) {
-    //     std::cout << d << ' ';
-    // }
-    // std::cout << "\n";
-    // for (auto&& v : index.vertex_) {
-    //     std::cout << v << ' ';
-    // }
-    // std::cout << "\n";
-    // for (auto&& [v, d] : index.vertex_to_depth_index_) {
-    //     std::cout << v << ' ' << d << "  ";
-    // }
+    io::PrintOutput(FindDistancies(std::move(index), std::move(test.queries)));
 }
