@@ -50,18 +50,6 @@ struct Edge {
 
 class Tree {
 public:
-    auto EdgesCount() const noexcept -> int {
-        return edges_;
-    }
-
-    auto GetDegree(Vertex node) const noexcept -> int {
-        return adj_list_.at(node).size();
-    }
-
-    auto NodesCount() const noexcept -> int {
-        return adj_list_.size();
-    }
-
     auto GetTarget(const Edge& edge) const noexcept -> Vertex {
         return edge.to;
     }
@@ -171,7 +159,7 @@ auto MakeIndex(tree::Tree&& tr) -> Index {
         }
 
         Index& index_;
-        int depth = -1;
+        int depth = 0;
     } visitor{result};
 
     std::unordered_set<Vertex> visited;
@@ -182,43 +170,42 @@ auto MakeIndex(tree::Tree&& tr) -> Index {
 
 class RMQ {
 public:
-    RMQ(std::vector<int>&& d) : index_(std::move(d)) {
+    RMQ(std::vector<int>&& d) : depth_(std::move(d)) {
         PrecalcFloor();
         PrecalcSparseTable();
     }
 
     auto Query(int left, int right) const -> int {
-        std::cout << left << " " << right << "\n";
         int j = floor_[right - left + 1];
-        int idx1 = sparse_table_[j][left];
-        int idx2 = sparse_table_[j][right - (1 << j) + 1];
-        return (index_[idx1] < index_[idx2]) ? idx1 : idx2;
+        int const idx1 = sparse_table_[j][left];
+        int const idx2 = sparse_table_[j][right - (1 << j) + 1];
+        return (depth_[idx1] < depth_[idx2]) ? idx1 : idx2;
     }
 
 private:
     auto PrecalcSparseTable() -> void {
-        int const log = std::log2(std::ssize(index_)) + 1;
-        sparse_table_.resize(log, std::vector<int>(std::ssize(index_), 0));
-        for (int i : std::views::iota(0, std::ssize(index_))) {
+        int const log = std::log2(std::ssize(depth_)) + 1;
+        sparse_table_.resize(log, std::vector<int>(std::ssize(depth_), 0));
+        for (int i : std::views::iota(0, std::ssize(depth_))) {
             sparse_table_[0][i] = i;
         }
-        for (int j = 1; (1 << j) <= std::ssize(index_); ++j) {
-            for (int i = 0; i <= std::ssize(index_) - (1 << j); ++i) {
-                int idx1 = sparse_table_[j - 1][i];
-                int idx2 = sparse_table_[j - 1][i + (1 << (j - 1))];
-                sparse_table_[j][i] = (index_[idx1] < index_[idx2]) ? idx1 : idx2;
+        for (int j = 1; (1 << j) <= std::ssize(depth_); ++j) {
+            for (int i = 0; i <= std::ssize(depth_) - (1 << j); ++i) {
+                int const idx1 = sparse_table_[j - 1][i];
+                int const idx2 = sparse_table_[j - 1][i + (1 << (j - 1))];
+                sparse_table_[j][i] = (depth_[idx1] < depth_[idx2]) ? idx1 : idx2;
             }
         }
     }
 
     auto PrecalcFloor() -> void {
-        floor_.resize(index_.size() + 1, 0);
-        for (int i : std::views::iota(2, std::ssize(index_) + 1)) {
-            floor_[i] = floor_[i / 2] + 1;
+        floor_.resize(depth_.size() + 1, 0);
+        for (int i : std::views::iota(2, std::ssize(depth_) + 1)) {
+            floor_[i] = floor_[i >> 1] + 1;
         }
     }
 
-    std::vector<int> index_;
+    std::vector<int> depth_;
     std::vector<std::vector<int>> sparse_table_;
     std::vector<int> floor_;
 };
@@ -243,7 +230,7 @@ private:
     std::unordered_map<tree::Vertex, int> vertex_to_depth_index_;
 };
 
-auto FindDistancies(Index&& index, std::vector<io::Query>&& queries) -> std::vector<int> {
+auto FindAncestors(Index&& index, std::vector<io::Query>&& queries) -> std::vector<int> {
     LCA lca{std::move(index)};
 
     std::vector output(queries.size(), 0);
@@ -260,19 +247,5 @@ int main() {
 
     auto&& test = io::ReadInput();
     auto&& index = MakeIndex(MakeTree(test));
-
-    for (auto&& d : index.depth_) {
-        std::cout << d << ' ';
-    }
-    std::cout << "\n";
-    for (auto&& v : index.vertex_) {
-        std::cout << v << ' ';
-    }
-    std::cout << "\n";
-    for (auto&& [v, d] : index.vertex_to_depth_index_) {
-        std::cout << v << ' ' << d << "  ";
-    }
-    std::cout << "\n";
-
-    io::PrintOutput(FindDistancies(std::move(index), std::move(test.queries)));
+    io::PrintOutput(FindAncestors(std::move(index), std::move(test.queries)));
 }
