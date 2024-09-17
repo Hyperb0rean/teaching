@@ -68,18 +68,13 @@ public:
         ++edges_;
     }
 
-    auto Root() const noexcept -> Vertex {
-        return root_;
-    }
-
-    auto SetRoot(Vertex root) -> void {
-        root_ = root;
-    }
+    auto Root() const -> Vertex {
+        return adj_list_.cbegin()->first;
+    };
 
 private:
     std::unordered_map<Vertex, std::vector<Edge>> adj_list_;
     int edges_;
-    Vertex root_;
 };
 
 }  // namespace tree
@@ -87,11 +82,10 @@ private:
 namespace io {
 
 struct Query {
-    int left_id, right_id;
+    int left_id, right_id, charge;
 };
 
 struct Test {
-    tree::Vertex root;
     std::vector<tree::Edge> tree;
     std::vector<Query> queries;
 };
@@ -99,7 +93,7 @@ struct Test {
 auto ReadInput(std::istream& is = std::cin) -> Test {
     Test test{};
     int tree_size;
-    is >> tree_size >> test.root;
+    is >> tree_size;
     test.tree.resize(tree_size);
     for (auto& edge : test.tree) {
         is >> edge.from >> edge.to;
@@ -108,23 +102,22 @@ auto ReadInput(std::istream& is = std::cin) -> Test {
     is >> query_size;
     test.queries.resize(query_size);
     for (auto& query : test.queries) {
-        is >> query.left_id >> query.right_id;
+        is >> query.left_id >> query.right_id >> query.charge;
     }
     return test;
 }
 
 auto PrintOutput(std::vector<int>&& output, std::ostream& os = std::cout) -> void {
     for (auto&& val : output) {
-        os << val << "\n";
+        os << ((val == 0) ? "No" : "Yes") << "\n";
     }
 }
 
 }  // namespace io
 
-auto MakeTree(io::Test const& test) -> tree::Tree {
+auto MakeTree(std::vector<tree::Edge>&& tree) -> tree::Tree {
     tree::Tree result;
-    result.SetRoot(test.root);
-    for (auto&& [from, to] : test.tree) {
+    for (auto&& [from, to] : tree) {
         result.AddEdge(from, to);
     }
     return result;
@@ -241,22 +234,13 @@ private:
     std::unordered_map<tree::Vertex, int> vertex_to_depth_index_;
 };
 
-auto FindAncestors(Index&& index, std::vector<io::Query>&& queries) -> std::vector<int> {
+auto CheckConnectivity(Index&& index, std::vector<io::Query>&& queries) -> std::vector<int> {
     LCA lca{std::move(index)};
 
     std::vector output(queries.size(), 0);
     for (int i : std::views::iota(0, std::ssize(queries))) {
-        output[i] = lca.Query(queries[i].left_id, queries[i].right_id);
-    }
-    return output;
-}
-
-auto FindDistancies(Index&& index, std::vector<io::Query>&& queries) -> std::vector<int> {
-    LCA lca{std::move(index)};
-
-    std::vector output(queries.size(), 0);
-    for (int i : std::views::iota(0, std::ssize(queries))) {
-        output[i] = lca.Distance(queries[i].left_id, queries[i].right_id);
+        output[i] =
+            (lca.Distance(queries[i].left_id, queries[i].right_id) > queries[i].charge) ? 0 : 1;
     }
     return output;
 }
@@ -266,7 +250,11 @@ auto FindDistancies(Index&& index, std::vector<io::Query>&& queries) -> std::vec
 int main() {
     using namespace solution;
 
+    std::cin.tie(nullptr);
+    std::cout.tie(nullptr);
+    std::ios::sync_with_stdio(false);
+
     auto&& test = io::ReadInput();
-    auto&& index = MakeIndex(MakeTree(test));
-    io::PrintOutput(FindDistancies(std::move(index), std::move(test.queries)));
+    auto&& index = MakeIndex(MakeTree(std::move(test.tree)));
+    io::PrintOutput(CheckConnectivity(std::move(index), std::move(test.queries)));
 }
