@@ -7,3 +7,7 @@
 build*
 compile_commands.json
 .cache
+*.data
+*.script
+*.html
+*.old

@@ -59,7 +59,7 @@ public:
     }
 
     auto GetOutgoingEdges(Vertex node) const {
-        return std::ranges::ref_view(adj_list_.at(node));
+        return std::ranges::ref_view(adj_list_[node]);
     }
 
     auto AddEdge(Vertex from, Vertex to) -> void {
@@ -69,11 +69,19 @@ public:
     }
 
     auto Root() const -> Vertex {
-        return adj_list_.cbegin()->first;
+        return 0;
     };
 
+    auto Size() const -> int {
+        return adj_list_.size();
+    }
+
+    Tree(int size) {
+        adj_list_.resize(size);
+    }
+
 private:
-    std::unordered_map<Vertex, std::vector<Edge>> adj_list_;
+    std::vector<std::vector<Edge>> adj_list_;
     int edges_;
 };
 
@@ -94,7 +102,7 @@ auto ReadInput(std::istream& is = std::cin) -> Test {
     Test test{};
     int tree_size;
     is >> tree_size;
-    test.tree.resize(tree_size);
+    test.tree.resize(tree_size - 1);
     for (auto& edge : test.tree) {
         is >> edge.from >> edge.to;
     }
@@ -116,7 +124,7 @@ auto PrintOutput(std::vector<int>&& output, std::ostream& os = std::cout) -> voi
 }  // namespace io
 
 auto MakeTree(std::vector<tree::Edge>&& tree) -> tree::Tree {
-    tree::Tree result;
+    tree::Tree result(tree.size() + 1);
     for (auto&& [from, to] : tree) {
         result.AddEdge(from, to);
     }
@@ -126,12 +134,13 @@ auto MakeTree(std::vector<tree::Edge>&& tree) -> tree::Tree {
 struct Index {
     std::vector<int> depth_;
     std::vector<tree::Vertex> vertex_;
-    std::unordered_map<tree::Vertex, int> vertex_to_depth_index_;
+    std::vector<int> vertex_to_depth_index_;
 };
 
 auto MakeIndex(tree::Tree&& tr) -> Index {
     using namespace solution::tree;
     Index result;
+    result.vertex_to_depth_index_.resize(tr.Size());
     struct IndexVisitor : traverse::GraphVisitor<Vertex, Edge> {
         auto DiscoverVertex(Vertex vertex) -> void override {
             index_.vertex_to_depth_index_[vertex] = index_.depth_.size();
@@ -218,20 +227,20 @@ public:
 
     auto Query(tree::Vertex first, tree::Vertex second) -> tree::Vertex {
         auto&& [left, right] =
-            std::minmax(vertex_to_depth_index_.at(first), vertex_to_depth_index_.at(second));
+            std::minmax(vertex_to_depth_index_[first], vertex_to_depth_index_[second]);
         return vertex_[rmq_.Query(left, right)];
     }
 
     auto Distance(tree::Vertex first, tree::Vertex second) -> tree::Vertex {
         auto&& [left, right] =
-            std::minmax(vertex_to_depth_index_.at(first), vertex_to_depth_index_.at(second));
+            std::minmax(vertex_to_depth_index_[first], vertex_to_depth_index_[second]);
         return rmq_.Distance(left, right);
     }
 
 private:
     RMQ rmq_;
     std::vector<tree::Vertex> vertex_;
-    std::unordered_map<tree::Vertex, int> vertex_to_depth_index_;
+    std::vector<int> vertex_to_depth_index_;
 };
 
 auto CheckConnectivity(Index&& index, std::vector<io::Query>&& queries) -> std::vector<int> {
